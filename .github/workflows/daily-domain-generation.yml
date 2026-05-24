@@ -1,0 +1,58 @@
+name: Daily CHN Domain Generation
+
+on:
+  schedule:
+    - cron: '30 16 * * *'
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Prepare working directory
+        run: mkdir -p .github/output
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - run: pip install requests
+        working-directory: .github
+
+      - name: Run generator
+        run: python ../gen-chndomain.py
+        working-directory: .github
+
+      - name: Copy output to root
+        run: |
+          mkdir -p output_ready
+          cp .github/output/*.txt output_ready/
+
+      - name: Push to conf branch
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          git fetch origin conf || true
+          git checkout -b temp-update
+
+          git rm -rf . || true
+          git commit -m "cleanup" || true
+
+          cp output_ready/*.txt .
+
+          git add *.txt
+          git diff --quiet && git diff --staged --quiet || git commit -m "Auto update domains - $(date -u +'%Y-%m-%d %H:%M:%S')"
+
+          git push origin temp-update:conf --force
+
+      - name: Cleanup
+        run: rm -rf output_ready .github/output/*
